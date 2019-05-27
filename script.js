@@ -1,40 +1,49 @@
 const AWS = require("aws-sdk");
 const ec2 = new AWS.EC2();
 
-const EMPTY = Symbol("empty");
+const getPaginatedResults = async (fn) => {
+	const EMPTY = Symbol("empty");
+	const res = [];
+	for await (const lf of (async function*() {
+		let NextMarker = EMPTY;
+		while (NextMarker || NextMarker === EMPTY) {
+			const {marker, results} = await fn(NextMarker !== EMPTY ? NextMarker : undefined);
+
+			yield* results;
+			NextMarker = marker;
+		}
+	})()) {
+		res.push(lf);
+	}
+
+	return res;
+};
 
 (async () => {
-	const regions = (await ec2.describeRegions().promise()).Regions.map(({RegionName}) => RegionName).filter((region) => region === "eu-west-1" || region === "us-east-1" || true);
+	const regions = (await ec2.describeRegions().promise()).Regions.map(({RegionName}) => RegionName);
 	const lambdas = await Promise.all(regions.map(async (region) => {
 		const lambda = new AWS.Lambda({region});
-		const res = [];
-		for await (const lf of (async function*() {
-			let NextMarker = EMPTY;
-			while (NextMarker || NextMarker === EMPTY) {
-				const functions = await lambda.listFunctions({Marker: NextMarker !== EMPTY ? NextMarker : undefined}).promise();
-				yield* functions.Functions.map(({FunctionName}) => FunctionName);
-				NextMarker = functions.NextMarker;
-			}
-		})()) {
-			res.push(lf);
-		}
+		const res = await getPaginatedResults(async (NextMarker) => {
+			const functions = await lambda.listFunctions({Marker: NextMarker}).promise();
+			return {
+				marker: functions.NextMarker,
+				results: functions.Functions.map(({FunctionName}) => FunctionName),
+			};
+		});
 
 		return {region, functions: res};
 	}));
 
 	const logGroups = await Promise.all(regions.map(async (region) => {
 		const logs = new AWS.CloudWatchLogs({region});
-		const res = [];
-		for await (const lg of (async function*() {
-			let nextToken = EMPTY;
-			while (nextToken || nextToken === EMPTY) {
-				const logGroups = await logs.describeLogGroups({nextToken: nextToken !== EMPTY ? nextToken : undefined, logGroupNamePrefix: "/aws/lambda/"}).promise();
-				yield* logGroups.logGroups.map(({logGroupName, storedBytes, retentionInDays}) => ({logGroupName, storedBytes, retentionInDays}));
-				nextToken = logGroups.nextToken;
-			}
-		})()) {
-			res.push(lg);
-		}
+		const res = await getPaginatedResults(async (NextMarker) => {
+			const logGroups = await logs.describeLogGroups({nextToken: NextMarker, logGroupNamePrefix: "/aws/lambda/"}).promise();
+			return {
+				marker: logGroups.nextToken,
+				results: logGroups.logGroups.map(({logGroupName, storedBytes, retentionInDays}) => ({logGroupName, storedBytes, retentionInDays})),
+			};
+
+		});
 
 		return {region, logGroups: res};
 	}));
