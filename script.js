@@ -8,7 +8,7 @@ const EMPTY = Symbol("empty");
 	const lambdas = await Promise.all(regions.map(async (region) => {
 		const lambda = new AWS.Lambda({region});
 		const res = [];
-		for await (const lf of (async function* fetchLambdas() {
+		for await (const lf of (async function*() {
 			let NextMarker = EMPTY;
 			while (NextMarker || NextMarker === EMPTY) {
 				const functions = await lambda.listFunctions({Marker: NextMarker !== EMPTY ? NextMarker : undefined}).promise();
@@ -25,7 +25,7 @@ const EMPTY = Symbol("empty");
 	const logGroups = await Promise.all(regions.map(async (region) => {
 		const logs = new AWS.CloudWatchLogs({region});
 		const res = [];
-		for await (const lg of (async function* fetchLogGroups() {
+		for await (const lg of (async function*() {
 			let nextToken = EMPTY;
 			while (nextToken || nextToken === EMPTY) {
 				const logGroups = await logs.describeLogGroups({nextToken: nextToken !== EMPTY ? nextToken : undefined, logGroupNamePrefix: "/aws/lambda/"}).promise();
