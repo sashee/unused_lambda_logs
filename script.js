@@ -54,10 +54,13 @@ const getPaginatedResults = async (fn) => {
 	const unusedLogGroups = logGroups.map(({region, logGroups}) => {
 		const unusedLogGroups = logGroups.filter(({logGroupName}) => {
 			return ![
+				// all functions in this region
 				...lambdas.find(({region: r}) => r === region).functions,
+				// all functions in all regions prefixed with the region (lambda@edge logs to different regions)
 				...lambdas.map(({region, functions}) => functions.map((fn) => `${region}.${fn}`)).flat(),
 			].map((lambda) => `/aws/lambda/${lambda}`).includes(logGroupName);
 		});
+
 		return {region, unusedLogGroups};
 	});
 
